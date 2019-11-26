@@ -1,0 +1,10 @@
+# Python
+.ipynb_checkpoints/
+env
+__pycache__
+
+# Mac
+.DS_Store
+
+# Project
+data
