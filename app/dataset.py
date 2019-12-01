@@ -47,18 +47,22 @@ class DataSet:
         """Take a rio opened dataset and read it into a np array, performing some transformations.
 
         """
+        # Read raster_obj into np_array
         np_arr_read = raster_obj.read()
         np_arr = np_arr_read[0]
 
+        # Read raster config
+        raster_config = self._config.config('raster')
+
         # Clipping the array
-        clip_min=0
-        clip_max=2
+        clip_min=float(raster_config['ClipMin'])
+        clip_max=float(raster_config['ClipMax'])
 
         arr_clip = np.clip(np_arr, clip_min, clip_max)
 
         # Log array to spread distribution
-        a_l = 1
-        b_l = 0.1
+        a_l = float(raster_config['ALog'])
+        b_l = float(raster_config['BLog'])
 
         array_log = log(arr_clip, a_l, b_l)
         np_arr_log_norm = normalize(array_log)
