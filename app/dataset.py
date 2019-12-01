@@ -1,7 +1,9 @@
 import geopandas as gpd
 from pathlib import Path
 import rasterio as rio
+from rasterio import features
 import numpy as np
+
 
 def log(x, a, b):
     return np.log(a*x + b)
@@ -77,29 +79,42 @@ class DataSet:
 
         return np_arr_log_norm
 
-    def transform_polygons(self, polygons, raster_obj, np_arr_log_norm):
+    def transform_shape_file(self, shape_obj, raster_obj):
         # Transform to raster projection
-        polygons_resh = polygons.to_crs(raster_obj.crs)
+        polygons_resh = shape_obj.to_crs(raster_obj.crs)
         # get polygon geometries
         geoms = polygons_resh['geometry']
         # Build polygon mask
-        polygon_mask = rio.features.geometry_mask(geometries=geoms,
+        polygon_mask = features.geometry_mask(geometries=geoms,
                                        out_shape=(raster_obj.height, raster_obj.width),
                                        transform=raster_obj.transform,
                                        all_touched=False,
                                        invert=True)
         
         # Normalized polygon mask
-        polygon_mask_int = np.multiply(polygon_mask, 1)
-        np_arr_norm_mask_int = np.multiply(np_arr_log_norm, polygon_mask_int)
+        np_arr_mask = np.multiply(polygon_mask, 1)
 
-        return np_arr_norm_mask_int
+        return np_arr_mask
     
-    def crop_polygon_and_raster_arrays(self, np_arr_mask, np_arr_log_norm):
+    def crop_polygon_and_raster_arrays(self, np_arr_log_norm, np_arr_mask):
         np_arr_log_norm_crop = np_arr_log_norm[:-100,:-99]
         np_arr_mask_crop = np_arr_mask[:-100,:-99]
 
+
+        return np_arr_log_norm_crop, np_arr_mask_crop
+    
+    def load_and_prepare_data(self, area, year):
+        # Read shape and raster file
+        shape_obj = self.read_shape_file(area, year)
+        raster_obj = self.read_raster_file(area, year)
+        # Transform shape and raster file
+        np_arr_log_norm = self.transform_raster_file(raster_obj)
+        np_arr_mask = self.transform_shape_file(shape_obj, raster_obj)
+        # Crop files
+        np_arr_log_norm_crop, np_arr_mask_crop = self.crop_polygon_and_raster_arrays(np_arr_log_norm, np_arr_mask)
+        # Split into Xdata, Ydata
         size_sample = (128, 128)
         Xdata = split_array(np_arr_log_norm_crop, size_sample[0], size_sample[1])
         Ydata = split_array(np_arr_mask_crop, size_sample[0], size_sample[1])
-        return np_arr_log_norm_crop, np_arr_mask_crop
+        
+        return Xdata, Ydata
