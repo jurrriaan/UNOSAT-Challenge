@@ -11,6 +11,14 @@ def normalize(array):
     """
     array_min, array_max = array.min(), array.max()
     return (array - array_min) / (array_max - array_min)
+# https://stackoverflow.com/questions/11105375/how-to-split-a-matrix-into-4-blocks-using-numpy/51914911#51914911?newreg=399264720ba84b0cb7e27c4fb121322d
+def split_array(array, nrows, ncols):
+    """Split a matrix into sub-matrices."""
+
+    r, h = array.shape
+    return (array.reshape(h//nrows, nrows, -1, ncols)
+                 .swapaxes(1, 2)
+                 .reshape(-1, nrows, ncols))
 
 class DataSet:
     def __init__(self, config):
@@ -68,3 +76,30 @@ class DataSet:
         np_arr_log_norm = normalize(array_log)
 
         return np_arr_log_norm
+
+    def transform_polygons(self, polygons, raster_obj, np_arr_log_norm):
+        # Transform to raster projection
+        polygons_resh = polygons.to_crs(raster_obj.crs)
+        # get polygon geometries
+        geoms = polygons_resh['geometry']
+        # Build polygon mask
+        polygon_mask = rio.features.geometry_mask(geometries=geoms,
+                                       out_shape=(raster_obj.height, raster_obj.width),
+                                       transform=raster_obj.transform,
+                                       all_touched=False,
+                                       invert=True)
+        
+        # Normalized polygon mask
+        polygon_mask_int = np.multiply(polygon_mask, 1)
+        np_arr_norm_mask_int = np.multiply(np_arr_log_norm, polygon_mask_int)
+
+        return np_arr_norm_mask_int
+    
+    def crop_polygon_and_raster_arrays(self, np_arr_mask, np_arr_log_norm):
+        np_arr_log_norm_crop = np_arr_log_norm[:-100,:-99]
+        np_arr_mask_crop = np_arr_mask[:-100,:-99]
+
+        size_sample = (128, 128)
+        Xdata = split_array(np_arr_log_norm_crop, size_sample[0], size_sample[1])
+        Ydata = split_array(np_arr_mask_crop, size_sample[0], size_sample[1])
+        return np_arr_log_norm_crop, np_arr_mask_crop
