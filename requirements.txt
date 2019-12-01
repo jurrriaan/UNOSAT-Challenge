@@ -1,1 +1,2 @@
 configparser==4.0.2
+geopandas==0.6.0

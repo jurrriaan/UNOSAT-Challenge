@@ -1,8 +1,9 @@
 import app
 
 def main():
-    ml = app.Config()
-    print(ml.config())
+    config = app.Config()
+    dataset = app.DataSet(config)
+    print(dataset.read_shape_file('Mosul', '2015'))
 
 if __name__ == "__main__":
     main()
