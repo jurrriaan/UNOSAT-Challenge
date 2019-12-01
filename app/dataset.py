@@ -1,6 +1,16 @@
 import geopandas as gpd
 from pathlib import Path
 import rasterio as rio
+import numpy as np
+
+def log(x, a, b):
+    return np.log(a*x + b)
+
+def normalize(array):
+    """Normalize bands into 0.0 - 1.0 scale
+    """
+    array_min, array_max = array.min(), array.max()
+    return (array - array_min) / (array_max - array_min)
 
 class DataSet:
     def __init__(self, config):
@@ -32,3 +42,25 @@ class DataSet:
         raster_file_abs_path = path.absolute()
         
         return rio.open(raster_file_abs_path)
+    
+    def transform_raster_file(self, raster_obj):
+        """Take a rio opened dataset and read it into a np array, performing some transformations.
+
+        """
+        np_arr_read = raster_obj.read()
+        np_arr = np_arr_read[0]
+
+        # Clipping the array
+        clip_min=0
+        clip_max=2
+
+        arr_clip = np.clip(np_arr, clip_min, clip_max)
+
+        # Log array to spread distribution
+        a_l = 1
+        b_l = 0.1
+
+        array_log = log(arr_clip, a_l, b_l)
+        np_arr_log_norm = normalize(array_log)
+
+        return np_arr_log_norm
