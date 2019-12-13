@@ -34,6 +34,7 @@ def zero_padding_1(arr, sub_sample_shape):
 
     return arr
 
+
 def zero_padding_1_labels(arr, sub_sample_shape):
     """make array dimension a multiple of sub_sample_shape
     """
@@ -49,6 +50,7 @@ def zero_padding_1_labels(arr, sub_sample_shape):
     print("new size padding 1:", arr.shape)
 
     return arr
+
 
 def zero_padding_2(arr, dim_str, inv_stride, size_sub_sample):
     """ padding array to fit stride
@@ -103,7 +105,7 @@ def save_array_in_new_sub_dir(arr, main_dir, name_new_dir, filename, dim_str):
     name_new_dir = 'split'
     dir_data_split = join(main_dir, name_new_dir) 
     ld.make_dir(dir_data_split)
-    path_file_split = join(dir_data_split, os.path.splitext(filename)[0]  + '_' + name_new_dir + '_' + dim_str)
+    path_file_split = join(dir_data_split, os.path.splitext(filename)[0] + '_' + name_new_dir + '_' + dim_str)
     np.save(path_file_split, arr)
 
 

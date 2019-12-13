@@ -11,15 +11,16 @@ import matplotlib.pyplot as plt
 
 import geopandas as gpd
 import rasterio as rio
-
 from load_data import seasons_fixed_order, make_dir
 
+EPSG_CRS = 'EPSG:32638'
 
-def preprocess_data(dict_data, dir_save_plots, 
+
+def preprocess_data(dict_paths, dir_save_plots,
                                quantile_clip_max):
     print('preprocessing...')
     dict_arrays = dict()
-    dict_raster_layers = tif2raster(dict_data)
+    dict_raster_layers = tif2raster(dict_paths)
 
     for area in dict_raster_layers:
         print(area)
@@ -34,27 +35,26 @@ def preprocess_data(dict_data, dir_save_plots,
             list_np_arrs_area.append((season, pol, np_arr_norm))
 
         dict_arrays[area] = list_np_arrs_area
-        
+
     return dict_raster_layers, dict_arrays
 
 
-def get_label_data(dict_data, dict_raster_layers, dir_save_plots):
-    dict_polygons = shp2polygons(dict_data)
+def get_label_data(dict_paths, dict_raster_layers):
+    dict_polygons = shp2polygons(dict_paths)
     dict_labels = dict()
     
     for area in dict_raster_layers:
-        raster_obj = dict_raster_layers[area][0][2]   
-        dict_labels[area] = np_arr2polygon_mask(dict_polygons[area],
-                   raster_obj)
+        raster_obj = dict_raster_layers[area][0][2]
+
+        dict_labels[area] = polygons_2_np_arr_mask(dict_polygons[area], raster_obj)
     return dict_labels
 
 
-def shp2polygons(dict_data):
+def shp2polygons(dict_paths):
     dict_polygons = dict()   
-    for area in dict_data:
-        for season in seasons_fixed_order:
-            path_shape = dict_data[area]['shp']
-            dict_polygons[area] = gpd.read_file(path_shape)    
+    for area in dict_paths:
+        path_shape = dict_paths[area]['shp']
+        dict_polygons[area] = gpd.read_file(path_shape)
     return dict_polygons
 
 
@@ -76,8 +76,10 @@ def tif2raster(dict_data):
 def exponent(x, a, b):
     return a*x**b
 
+
 def log(x, a, b):
     return np.log(a*x + b)
+
 
 # Normalize bands into 0.0 - 1.0 scale
 def normalize(array):
@@ -103,15 +105,22 @@ def process_image(np_arr, quantile_clip_max, clip_min, plotting,
     return np_arr_norm 
 
 
-def np_arr2polygon_mask(polygons, raster_obj):
-    polygons_resh = polygons.to_crs(raster_obj.crs)
+def polygons_2_np_arr_mask(polygons, raster_obj):
+    polygons_resh = polygons.to_crs(EPSG_CRS)
     geoms = polygons_resh['geometry']
-    
-    polygon_mask = rio.features.geometry_mask(geometries=geoms,
+    try:
+        polygon_mask = rio.features.geometry_mask(geometries=geoms,
                                        out_shape=(raster_obj.height, raster_obj.width),
                                        transform=raster_obj.transform,
                                        all_touched=False,
                                        invert=True)
+    except:
+        polygon_mask = rio._features.geometry_mask(geometries=geoms,
+                                       out_shape=(raster_obj.height, raster_obj.width),
+                                       transform=raster_obj.transform,
+                                       all_touched=False,
+                                       invert=True)
+
     print('polygon mask shape:', polygon_mask.shape)
     
     polygon_mask_int = np.multiply(polygon_mask, 1)
@@ -150,13 +159,3 @@ def save_labels(dict_labels, dir_save_labels):
         list_paths_labels.append(path_file_save)
         
     return list_paths_labels
-        
-        
-        
-        
-        
-        
-        
-        
-        
-    

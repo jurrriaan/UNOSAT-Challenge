@@ -52,7 +52,7 @@ def paths_in_dict(path_data_local):
                         for file in files:
                             path_file = join(root, file)
                             if re.search(area + ".*" + str_pol + ".*" + year_month + ".*.tif$", path_file):
-                                if not 'BorderMask' in file:
+                                if 'BorderMask' not in file:
                                     dict_paths[area]['tif'][season][pol] = path_file
           
         # .shp files
@@ -65,27 +65,26 @@ def paths_in_dict(path_data_local):
     return dict_paths
 
 
-
-def tif2raster(dict_data):
+def tif2raster(dict_paths):
     dict_raster_layers = dict()
 
-    for area in dict_data:
+    for area in dict_paths:
         dict_raster_layers[area] = []
 
         for season in seasons_fixed_order:
-            for pol in sorted(dict_data[area]['tif'][season]):
-                path_raster = dict_data[area]['tif'][season][pol]
+            for pol in sorted(dict_paths[area]['tif'][season]):
+                path_raster = dict_paths[area]['tif'][season][pol]
                 raster_obj = rio.open(path_raster)
                 dict_raster_layers[area].append(raster_obj)
                 
     return dict_raster_layers 
 
 
-def shp2polygons(dict_data):
+def shp2polygons(dict_paths):
     dict_polygons = dict()
-    for area in dict_data:
+    for area in dict_paths:
         for season in seasons_fixed_order:
-            path_shape = dict_data[area]['shp'][season]
+            path_shape = dict_paths[area]['shp'][season]
             polygons = gpd.read_file(path_shape)
             dict_polygons[area] = polygons
     return dict_polygons
@@ -108,5 +107,16 @@ def make_dir(path_dir):
    return path_dir
 
 
+def load_entire_dataset(path_data):
+    print("loading all data from {}".format(path_data))
+    for i, file in enumerate(os.path.listdir(path_data)):
+        np_arr = np.load(join(path_data, file))
 
-    
+        if i == 0:
+            np_arr_all == np_arr
+        else:
+            np_arr_all = np.concatenate((np_arr, np_arr_all), axis=0)
+
+    print('dim np_arr_all:', np_arr_all.shape)
+    return np_arr_all
+
