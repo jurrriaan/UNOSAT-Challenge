@@ -1,6 +1,6 @@
 # Python
 .ipynb_checkpoints/
-env
+env/
 __pycache__
 
 
@@ -19,3 +19,5 @@ data
 # .tif files
 *.tif
 *.tiff
+
+images/
