@@ -5,13 +5,28 @@ Created on Tue Dec 10 22:02:03 2019
 
 @author: jurriaan
 """
+import pandas as pd
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import rasterio as rio
+from rasterio.plot import show
+from rasterio.plot import show_hist
+from rasterio.plot import plotting_extent
+from shapely.geometry import Polygon, mapping
+from rasterio.mask import mask
+from os.path import join
+import descartes
+import pyproj
+import warnings
 import numpy as np
 from os.path import join
 import matplotlib.pyplot as plt
-
 import geopandas as gpd
 import rasterio as rio
-from load_data import seasons_fixed_order, make_dir
+
+from src.load_data import seasons_fixed_order, make_dir
+
 
 EPSG_CRS = 'EPSG:32638'
 
@@ -106,20 +121,15 @@ def process_image(np_arr, quantile_clip_max, clip_min, plotting,
 
 
 def polygons_2_np_arr_mask(polygons, raster_obj):
-    polygons_resh = polygons.to_crs(EPSG_CRS)
+    polygons_resh = polygons.to_crs(raster_obj.crs)
     geoms = polygons_resh['geometry']
-    try:
-        polygon_mask = rio.features.geometry_mask(geometries=geoms,
+
+    polygon_mask = rio.features.geometry_mask(geometries=geoms,
                                        out_shape=(raster_obj.height, raster_obj.width),
                                        transform=raster_obj.transform,
                                        all_touched=False,
                                        invert=True)
-    except:
-        polygon_mask = rio._features.geometry_mask(geometries=geoms,
-                                       out_shape=(raster_obj.height, raster_obj.width),
-                                       transform=raster_obj.transform,
-                                       all_touched=False,
-                                       invert=True)
+
 
     print('polygon mask shape:', polygon_mask.shape)
     
@@ -130,7 +140,7 @@ def polygons_2_np_arr_mask(polygons, raster_obj):
 
 def save_stacked_arrays(dict_arrays, dir_save_arrays):
     print('stack and save arrays...')
-    list_paths_arrays=[]
+    list_paths_arrays = []
     for area in dict_arrays:
         print(area)
         list_np_arrs_area = []
@@ -144,6 +154,7 @@ def save_stacked_arrays(dict_arrays, dir_save_arrays):
         np.save(path_file_save, np.array(list_np_arrs_area))
         list_paths_arrays.append(path_file_save)
 
+    del list_np_arrs_area
     return list_paths_arrays
 
 
@@ -157,5 +168,6 @@ def save_labels(dict_labels, dir_save_labels):
         path_file_save = join(dir_save, area + '_label')
         np.save(path_file_save, dict_labels[area])
         list_paths_labels.append(path_file_save)
-        
+
+    del dict_labels
     return list_paths_labels
