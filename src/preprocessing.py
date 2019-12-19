@@ -73,15 +73,15 @@ def shp2polygons(dict_paths):
     return dict_polygons
 
 
-def tif2raster(dict_data):
+def tif2raster(dict_paths):
     dict_raster_layers = dict()
 
-    for area in dict_data:
+    for area in dict_paths:
         dict_raster_layers[area] = []
 
         for season in seasons_fixed_order:
-            for pol in sorted(dict_data[area]['tif'][season]):
-                path_raster = dict_data[area]['tif'][season][pol]
+            for pol in sorted(dict_paths[area]['tif'][season]):
+                path_raster = dict_paths[area]['tif'][season][pol]
                 raster_obj = rio.open(path_raster)
                 dict_raster_layers[area].append((season, pol, raster_obj))
                 
