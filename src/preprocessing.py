@@ -20,38 +20,105 @@ import descartes
 import pyproj
 import warnings
 import numpy as np
+import h5py
 from os.path import join
 import matplotlib.pyplot as plt
+
 import geopandas as gpd
 import rasterio as rio
 
-from src.load_data import seasons_fixed_order, make_dir
+from src import load_data as ld
+from src import utils as utl
 
 
-EPSG_CRS = 'EPSG:32638'
+def preprocces_data(dict_paths, path_file_hfd5, quantile_clip_max, size_sub_sample,
+                    dtype, dir_temp_plots):
+    with h5py.File(path_file_hfd5, 'w') as f:
+        for area in dict_paths:
+            print(area)
+            i = 0
+            # g = f.create_group(area)
+            dir_save_plots = utl.make_dir(join(dir_temp_plots, area))
+
+            for season in ld.seasons_fixed_order:
+                for pol in sorted(dict_paths[area]['tif'][season]):
+                    print(' ', season, pol)
+                    path_raster = dict_paths[area]['tif'][season][pol]
+                    np_arr_processed = process_image(rio.open(path_raster).read()[0],
+                                                        quantile_clip_max,
+                                                        clip_min=0,
+                                                        plotting=True,
+                                                        dir_save_plots=dir_save_plots,
+                                                        area=area, season=season,
+                                                        pol=pol)
+
+                    shape_x, shape_y = np_arr_processed.shape
+                    dim_x_add = size_sub_sample[0] - shape_x % size_sub_sample[0]
+                    dim_y_add = size_sub_sample[1] - shape_y % size_sub_sample[1]
+                    stacked_shape = (shape_x + dim_x_add, shape_y + dim_y_add) + (8,)
+
+                    if i == 0:
+                        dset = f.create_dataset(area,
+                                                stacked_shape,
+                                                dtype=dtype,
+                                                chunks=True)
+                        print(' shape init', dset.shape)
+
+                    dset[:, :, i] = pad_zeros_xy(np_arr_processed, dim_x_add, dim_y_add)
+                    i += 1
+
+            print("shape dataset:", dset.shape)
 
 
-def preprocess_data(dict_paths, dir_save_plots,
-                               quantile_clip_max):
-    print('preprocessing...')
-    dict_arrays = dict()
-    dict_raster_layers = tif2raster(dict_paths)
+def preprocess_shape(dict_paths, file_hfd5_labels, sub_sample_shape):
+    with h5py.File(file_hfd5_labels, 'w') as f:
+        for area in dict_paths:
+            print(area)
 
-    for area in dict_raster_layers:
-        print(area)
-        list_np_arrs_area = []
-        for season, pol, raster_obj in dict_raster_layers[area]:
-            print(' ', season, pol)
-            np_arr = raster_obj.read()[0]
-            np_arr_norm = process_image(np_arr, quantile_clip_max,  clip_min=0, 
-                                        plotting=True, 
-                                        dir_save_plots=dir_save_plots,
-                                        area=area,  season=season, pol=pol)
-            list_np_arrs_area.append((season, pol, np_arr_norm))
+            dict_polygons = shp2polygons(dict_paths)
 
-        dict_arrays[area] = list_np_arrs_area
+            # raster obj only required for shape and crs, this is season or pol independent
+            path_raster = dict_paths[area]['tif']['spring']['vh']
+            raster_obj = rio.open(path_raster)
+            arr_shape = raster_obj.shape
 
-    return dict_raster_layers, dict_arrays
+            dim_x_add = sub_sample_shape[0] - arr_shape[0] % sub_sample_shape[0]
+            dim_y_add = sub_sample_shape[1] - arr_shape[1] % sub_sample_shape[1]
+            arr_new_shape = (arr_shape[0] + dim_x_add,  arr_shape[1] + dim_y_add)
+
+            dset = f.create_dataset(area,
+                                    arr_new_shape,
+                                    dtype=dtype,
+                                    chunks=True)
+
+            dset[:] = pad_zeros_xy(polygons_2_np_arr_mask(dict_polygons[area],
+                                                                 raster_obj),
+                                   dim_x_add,
+                                   dim_y_add
+                                  )
+
+
+def pad_zeros_xy(arr, dim_x_add, dim_y_add, both_sides=False):
+    """
+
+    :param arr:
+    :param dim_x_add:
+    :param dim_y_add:
+    :param both_sides:
+    :return:
+    """
+    arr_zeros_stack_x = np.zeros((dim_x_add, arr.shape[1]), dtype=np.uint8)
+    arr = np.concatenate((arr, arr_zeros_stack_x), axis=0)
+
+    if both_sides:
+        arr = np.concatenate((arr_zeros_stack_x, arr), axis=0)
+
+    arr_zeros_stack_y = np.zeros((arr.shape[0], dim_y_add), dtype=np.uint8)
+    arr = np.concatenate((arr, arr_zeros_stack_y), axis=1)
+
+    if both_sides:
+        arr = np.concatenate((arr_zeros_stack_y, arr), axis=1)
+    return arr
 
 
 def get_label_data(dict_paths, dict_raster_layers):
@@ -79,7 +146,7 @@ def tif2raster(dict_paths):
     for area in dict_paths:
         dict_raster_layers[area] = []
 
-        for season in seasons_fixed_order:
+        for season in ld.seasons_fixed_order:
             for pol in sorted(dict_paths[area]['tif'][season]):
                 path_raster = dict_paths[area]['tif'][season][pol]
                 raster_obj = rio.open(path_raster)
@@ -148,7 +215,7 @@ def save_stacked_arrays(dict_arrays, dir_save_arrays):
             list_np_arrs_area.append(arr)
         
         dir_save = join(dir_save_arrays, 'whole')
-        make_dir(dir_save)
+        ld.make_dir(dir_save)
         
         path_file_save = join(dir_save, area)
         np.save(path_file_save, np.array(list_np_arrs_area))
@@ -163,7 +230,7 @@ def save_labels(dict_labels, dir_save_labels):
     list_paths_labels=[]
     for area in dict_labels:
         dir_save = join(dir_save_labels, 'whole')
-        make_dir(dir_save)
+        ld.make_dir(dir_save)
         
         path_file_save = join(dir_save, area + '_label')
         np.save(path_file_save, dict_labels[area])
