@@ -31,8 +31,9 @@ from src import load_data as ld
 from src import utils as utl
 
 
-def preprocces_data(dict_paths, path_file_hfd5, quantile_clip_max, size_sub_sample,
-                    dtype, dir_temp_plots):
+def preprocces_data(dict_paths, path_file_hfd5, quantile_clip_max, patch_size,
+                    dtype, dir_temp_plots, apply_log,  a_l=1, b_l=0.1,
+                    compression_opts=4):
     with h5py.File(path_file_hfd5, 'w') as f:
         for area in dict_paths:
             print(area)
@@ -46,6 +47,10 @@ def preprocces_data(dict_paths, path_file_hfd5, quantile_clip_max, size_sub_samp
                     path_raster = dict_paths[area]['tif'][season][pol]
                     np_arr_processed = process_image(rio.open(path_raster).read()[0],
                                                         quantile_clip_max,
+                                                        dtype=dtype,
+                                                        apply_log=apply_log,
+                                                        a_l=a_l,
+                                                        b_l=b_l,
                                                         clip_min=0,
                                                         plotting=True,
                                                         dir_save_plots=dir_save_plots,
@@ -53,15 +58,17 @@ def preprocces_data(dict_paths, path_file_hfd5, quantile_clip_max, size_sub_samp
                                                         pol=pol)
 
                     shape_x, shape_y = np_arr_processed.shape
-                    dim_x_add = size_sub_sample[0] - shape_x % size_sub_sample[0]
-                    dim_y_add = size_sub_sample[1] - shape_y % size_sub_sample[1]
+                    dim_x_add = patch_size[0] - shape_x % patch_size[0]
+                    dim_y_add = patch_size[1] - shape_y % patch_size[1]
                     stacked_shape = (shape_x + dim_x_add, shape_y + dim_y_add) + (8,)
 
                     if i == 0:
                         dset = f.create_dataset(area,
                                                 stacked_shape,
                                                 dtype=dtype,
-                                                chunks=True)
+                                                chunks=True,
+                                                compression="gzip",
+                                                compression_opts=compression_opts)
                         print(' shape init', dset.shape)
 
                     dset[:, :, i] = pad_zeros_xy(np_arr_processed, dim_x_add, dim_y_add)
@@ -70,7 +77,8 @@ def preprocces_data(dict_paths, path_file_hfd5, quantile_clip_max, size_sub_samp
             print("shape dataset:", dset.shape)
 
 
-def preprocess_shape(dict_paths, file_hfd5_labels, sub_sample_shape):
+def preprocess_shape(dict_paths, file_hfd5_labels, sub_sample_shape, dtype,
+                     compression_opts=4):
     with h5py.File(file_hfd5_labels, 'w') as f:
         for area in dict_paths:
             print(area)
@@ -89,13 +97,16 @@ def preprocess_shape(dict_paths, file_hfd5_labels, sub_sample_shape):
             dset = f.create_dataset(area,
                                     arr_new_shape,
                                     dtype=dtype,
-                                    chunks=True)
+                                    chunks=True,
+                                    compression="gzip",
+                                    compression_opts=compression_opts)
 
             dset[:] = pad_zeros_xy(polygons_2_np_arr_mask(dict_polygons[area],
                                                                  raster_obj),
                                    dim_x_add,
                                    dim_y_add
                                   )
+            print('')
 
 
 def pad_zeros_xy(arr, dim_x_add, dim_y_add, both_sides=False):
@@ -170,21 +181,28 @@ def normalize(array):
 
 
 def process_image(np_arr, quantile_clip_max, clip_min, plotting, 
-                  dir_save_plots, **kwargs_plotting):
+                  dir_save_plots, dtype, apply_log=False, **kwargs_plotting):
     # need to clip and normalize contrast of figure
     clip_max = np.quantile(np_arr, quantile_clip_max)
     arr_clip = np.clip(np_arr, clip_min, clip_max)
-    np_arr_norm = normalize(arr_clip)
-    
+
+    if apply_log:
+        np_arr_log  = log(arr_clip, kwargs_plotting['a_l'], kwargs_plotting['b_l'])
+        np_arr_norm = normalize(np_arr_log)
+    else:
+        np_arr_norm = normalize(arr_clip)
+
     if plotting:
         fig, ax = plt.subplots(figsize=(10,5))
         ax.hist(np_arr_norm.flatten(), bins=100)
-        title = ''.join([val + '-' for val in kwargs_plotting.values()]) 
+        title = ''.join([str(val) + '-' for val in kwargs_plotting.values()])
         ax.set_title(title)
         fig.savefig(join(dir_save_plots, title + '.png'))
         plt.close()
-    
-    return np_arr_norm 
+
+    return utl.convert2integers(np_arr_norm, dtype)
+
+
 
 
 def polygons_2_np_arr_mask(polygons, raster_obj):

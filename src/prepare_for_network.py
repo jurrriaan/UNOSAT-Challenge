@@ -12,10 +12,9 @@ import h5py
 import time
 
 
-
-def prepare_data_for_nn_pipeline(file_hfd5, file_split_hfd5, size_sub_sample,
+def prepare_data_for_nn_pipeline(file_hfd5, file_split_hfd5, patch_size,
                                  stride_mode, name_dset, dtype, inv_stride,
-                                 dataset_kind, depth_img=8):
+                                 dataset_kind, depth_img=8, compression_opts=4):
     t0 = time.time()
     with h5py.File(file_split_hfd5, 'w') as f2:
         with h5py.File(file_hfd5, 'r') as f1:
@@ -32,45 +31,49 @@ def prepare_data_for_nn_pipeline(file_hfd5, file_split_hfd5, size_sub_sample,
                     print("dim_str:", dim_str)
                     np_arr_shape = list(dset.shape)
                     if 'x' in dim_str:
-                        np_arr_shape[0] = np_arr_shape[0] + size_sub_sample[0]
+                        np_arr_shape[0] = np_arr_shape[0] + patch_size[0]
                     if 'y' in dim_str:
-                        np_arr_shape[1] = np_arr_shape[1] + size_sub_sample[1]
+                        np_arr_shape[1] = np_arr_shape[1] + patch_size[1]
 
                     idx_j = int(np_arr_shape[0] * np_arr_shape[1] / (
-                            size_sub_sample[0] * size_sub_sample[1])) + idx_i
+                            patch_size[0] * patch_size[1])) + idx_i
 
                     if dataset_kind == 'labels':
-                        np_arr_shape_split = (idx_j,) + size_sub_sample
-                        maxshape = (None,) + size_sub_sample
+                        np_arr_shape_split = (idx_j,) + patch_size
+                        maxshape = (None,) + patch_size
                     elif dataset_kind == 'data':
-                        np_arr_shape_split = (idx_j,) + size_sub_sample + (depth_img,)
-                        maxshape = (None,) + size_sub_sample + (depth_img,)
+                        np_arr_shape_split = (idx_j,) + patch_size + (depth_img,)
+                        maxshape = (None,) + patch_size + (depth_img,)
 
                     if idx_i == 0:
                         dset2 = f2.create_dataset(name_dset,
                                                   np_arr_shape_split,
                                                   dtype=dtype,
                                                   maxshape=maxshape,
-                                                  chunks=True)
+                                                  chunks=True,
+                                                  compression="gzip",
+                                                  compression_opts=compression_opts
+                                                  )
+
 
                     if dataset_kind == 'labels':
-                        dset2.resize((idx_j,) + size_sub_sample)
+                        dset2.resize((idx_j,) + patch_size)
                         dset2[idx_i:idx_j, :, :] = split_array_2D(zero_padding_2(dset[:],
-                                                                         dim_str,
-                                                                         inv_stride,
-                                                                         size_sub_sample),
-                                                                  size_sub_sample[0],
-                                                                  size_sub_sample[1])
+                                                                                 dim_str,
+                                                                                 inv_stride,
+                                                                                 patch_size),
+                                                                  patch_size[0],
+                                                                  patch_size[1])
                     elif dataset_kind == 'data':
                         for k in range(depth_img):
-                            dset2.resize((idx_j,) + size_sub_sample + (depth_img,))
+                            dset2.resize((idx_j,) + patch_size + (depth_img,))
                             dset2[idx_i:idx_j, :, :, k] = split_array_2D(
                                 zero_padding_2(dset[:, :, k],
                                                dim_str,
                                                inv_stride,
-                                               size_sub_sample),
-                                size_sub_sample[0],
-                                size_sub_sample[1])
+                                               patch_size),
+                                patch_size[0],
+                                patch_size[1])
                     print("dset2.shape:", dset2.shape)
                     print('idx i,j:', idx_i, idx_j)
                     meta_data[area + ' ' + dim_str] = (idx_i, idx_j)
@@ -83,11 +86,10 @@ def prepare_data_for_nn_pipeline(file_hfd5, file_split_hfd5, size_sub_sample,
 
 def list_stride(mode):
     if mode == 1:
-        return ['_']
-    if mode == 2:
-        return ['_', 'x', 'y', 'xy']
-
-
+        list_modes = ['_']
+    if mode == 4:
+        list_modes = ['_', 'x', 'y', 'xy']
+    return list_modes
 
 
 def zero_padding_1_labels(arr, sub_sample_shape):
@@ -108,18 +110,18 @@ def zero_padding_1_labels(arr, sub_sample_shape):
     return arr
 
 
-def zero_padding_2(arr, dim_str, inv_stride, size_sub_sample):
+def zero_padding_2(arr, dim_str, inv_stride, patch_size):
     """ padding array to fit stride
     """
     if dim_str:
         if 'x' in dim_str:
-            dim_x_add = int(np.ceil(size_sub_sample[0] / inv_stride))
+            dim_x_add = int(np.ceil(patch_size[0] / inv_stride))
             arr_zeros_stack = np.zeros((dim_x_add, arr.shape[1]),
                                        dtype=np.uint16)
             arr = np.concatenate((arr, arr_zeros_stack), axis=0)
             arr = np.concatenate((arr_zeros_stack, arr), axis=0)
         if 'y' in dim_str:
-            dim_y_add = int(np.ceil(size_sub_sample[1] / inv_stride))
+            dim_y_add = int(np.ceil(patch_size[1] / inv_stride))
             arr_zeros_stack = np.zeros((arr.shape[0], dim_y_add),
                                        dtype=np.uint16)
             arr = np.concatenate((arr, arr_zeros_stack), axis=1)
@@ -127,20 +129,20 @@ def zero_padding_2(arr, dim_str, inv_stride, size_sub_sample):
     return arr
 
 
-def zero_padding_2(arr, dim_str, inv_stride, size_sub_sample):
+def zero_padding_2(arr, dim_str, inv_stride, patch_size):
     """ padding array to fit stride
     """
     #print('padding 2:')
     #print(' dim_str:', dim_str)
     if dim_str:
         if 'x' in dim_str:
-            dim_x_add = int(np.ceil(size_sub_sample[0] / inv_stride))
+            dim_x_add = int(np.ceil(patch_size[0] / inv_stride))
             arr_zeros_stack = np.zeros((dim_x_add, arr.shape[1]),
                                        dtype=np.uint16)
             arr = np.concatenate((arr, arr_zeros_stack), axis=0)
             arr = np.concatenate((arr_zeros_stack, arr), axis=0)
         if 'y' in dim_str:
-            dim_y_add = int(np.ceil(size_sub_sample[1] / inv_stride))
+            dim_y_add = int(np.ceil(patch_size[1] / inv_stride))
             arr_zeros_stack = np.zeros((arr.shape[0], dim_y_add),
                                        dtype=np.uint16)
             arr = np.concatenate((arr, arr_zeros_stack), axis=1)
@@ -150,20 +152,20 @@ def zero_padding_2(arr, dim_str, inv_stride, size_sub_sample):
     return arr
 
 
-def zero_padding_2_labels(arr, dim_str, inv_stride, size_sub_sample):
+def zero_padding_2_labels(arr, dim_str, inv_stride, patch_size):
     """ padding array to fit stride
     """
     print('  padding 2:')
     print('    dim_str:', dim_str)
     if dim_str:
         if 'x' in dim_str:
-            dim_x_add = int(np.ceil(size_sub_sample[0] / inv_stride))
+            dim_x_add = int(np.ceil(patch_size[0] / inv_stride))
             arr_zeros_stack = np.zeros((dim_x_add, arr.shape[1]), dtype=np.uint16)
             arr = np.concatenate((arr, arr_zeros_stack), axis=0)
             arr = np.concatenate((arr_zeros_stack, arr), axis=0)
 
         if 'y' in dim_str:
-            dim_y_add = int(np.ceil(size_sub_sample[1] / inv_stride))
+            dim_y_add = int(np.ceil(patch_size[1] / inv_stride))
             arr_zeros_stack = np.zeros((arr.shape[0], dim_y_add), dtype=np.uint16)
             arr = np.concatenate((arr, arr_zeros_stack), axis=1)
             arr = np.concatenate((arr_zeros_stack, arr), axis=1)
@@ -175,7 +177,7 @@ def zero_padding_2_labels(arr, dim_str, inv_stride, size_sub_sample):
 def split_array_2D(array, nrows, ncols):
     """Split a matrix into sub-matrices of shape (nrows, ncols)"""
     r, h = array.shape
-    return (array.reshape(h//nrows, nrows, -1, ncols)
+    return (array.reshape(r//nrows, nrows, -1, ncols)
                  .swapaxes(1, 2)
                  .reshape(-1, nrows, ncols))
 
